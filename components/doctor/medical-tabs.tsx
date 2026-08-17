@@ -16,6 +16,7 @@ import {
   Trash2,
   AlertTriangle,
   Calendar,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ImageUpload } from "@/components/doctor/image-upload"
@@ -47,6 +48,10 @@ type MedicalTabsProps = {
   onUploadImage: (field: ImageField, file: File) => void
   onUploadExamPhoto: (file: File) => void
   onPrintPrescription: (record: MedicalRecord) => void
+  isSaving?: boolean
+  saveSuccessMsg?: boolean
+  uploadError?: string | null
+  uploadingField?: string | null
 }
 
 export function MedicalTabs({
@@ -57,6 +62,10 @@ export function MedicalTabs({
   onUploadImage,
   onUploadExamPhoto,
   onPrintPrescription,
+  isSaving = false,
+  saveSuccessMsg = false,
+  uploadError = null,
+  uploadingField = null,
 }: MedicalTabsProps) {
   const [active, setActive] = useState<TabKey>("investigations")
 
@@ -119,10 +128,8 @@ export function MedicalTabs({
     setSurgerySavedMsg(false)
     try {
       if (editingSurgeryId) {
-        // Update existing surgery
         await updateSurgery(editingSurgeryId, surgeryDesc, surgeryDate)
       } else {
-        // Create new surgery
         await scheduleSurgery(record.patientId, patientName, surgeryDesc, surgeryDate)
       }
       setSurgerySavedMsg(true)
@@ -150,6 +157,21 @@ export function MedicalTabs({
 
   return (
     <div>
+      {/* Notifications / Errors */}
+      {uploadError && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400 border border-amber-500/20">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{uploadError}</span>
+        </div>
+      )}
+
+      {saveSuccessMsg && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>Medical record changes saved successfully to Firestore!</span>
+        </div>
+      )}
+
       {/* Tab triggers */}
       <div className="flex flex-wrap gap-1 border-b border-border" role="tablist" aria-label="Medical record sections">
         {TABS.map((tab) => {
@@ -193,6 +215,7 @@ export function MedicalTabs({
             <ImageUpload
               label="Upload X-Ray / Test Image"
               imageUrl={record.xrayImageUrl}
+              uploading={uploadingField === "xrayImageUrl"}
               onUpload={(file) => onUploadImage("xrayImageUrl", file)}
               alt="Uploaded X-ray or test image"
             />
@@ -217,6 +240,7 @@ export function MedicalTabs({
             <ImageUpload
               label="Upload History Document / Image"
               imageUrl={record.historyImageUrl}
+              uploading={uploadingField === "historyImageUrl"}
               onUpload={(file) => onUploadImage("historyImageUrl", file)}
               alt="Uploaded medical history document"
               height="h-72"
@@ -229,6 +253,7 @@ export function MedicalTabs({
             <ImageUpload
               label="Upload Old Prescription"
               imageUrl={record.oldPrescriptionUrl}
+              uploading={uploadingField === "oldPrescriptionUrl"}
               onUpload={(file) => onUploadImage("oldPrescriptionUrl", file)}
               alt="Uploaded previous prescription"
             />
@@ -269,7 +294,7 @@ export function MedicalTabs({
             </div>
             <div className="mb-4 flex items-center justify-between">
               <p className="text-sm text-muted-foreground">Examination photo gallery</p>
-              <ExamUploadButton onUpload={onUploadExamPhoto} />
+              <ExamUploadButton onUpload={onUploadExamPhoto} uploading={uploadingField === "examinations"} />
             </div>
             {record.examinations.length === 0 ? (
               <div className="flex h-40 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/40 text-sm text-muted-foreground">
@@ -516,9 +541,18 @@ export function MedicalTabs({
       {/* Save bar for other tabs */}
       {active !== "surgery" && (
         <div className="flex justify-end border-t border-border pt-4">
-          <Button type="button" onClick={() => onSave(record)}>
-            <Save className="mr-2 h-4 w-4" aria-hidden="true" />
-            Save Changes
+          <Button type="button" disabled={isSaving} onClick={() => onSave(record)}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving to Firestore...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" aria-hidden="true" />
+                Save Changes
+              </>
+            )}
           </Button>
         </div>
       )}
@@ -526,14 +560,15 @@ export function MedicalTabs({
   )
 }
 
-function ExamUploadButton({ onUpload }: { onUpload: (file: File) => void }) {
+function ExamUploadButton({ onUpload, uploading }: { onUpload: (file: File) => void; uploading?: boolean }) {
   return (
     <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
-      <Plus className="h-4 w-4" aria-hidden="true" />
-      Upload Examination Photo
+      {uploading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+      {uploading ? "Uploading Photo..." : "Upload Examination Photo"}
       <input
         type="file"
         accept="image/*"
+        disabled={uploading}
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0]

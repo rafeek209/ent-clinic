@@ -1,6 +1,9 @@
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { db, storage } from "@/lib/firebase"
+
 export type ExaminationPhoto = {
   id: string
-  // In production this will be a Firebase Storage download URL.
   url: string | null
   description: string
 }
@@ -20,85 +23,97 @@ export type MedicalRecord = {
 // Image fields that accept a single uploaded picture across the tabs.
 export type ImageField = "xrayImageUrl" | "historyImageUrl" | "oldPrescriptionUrl"
 
-// Mock seed data — replace with data fetched from Firestore later.
-export const initialMedicalRecords: Record<string, MedicalRecord> = {
-  "1": {
-    patientId: "1",
-    labNotes:
-      "CBC within normal range. Vitamin D slightly low (24 ng/mL). Recommend supplementation and recheck in 3 months.",
+const COLLECTION_NAME = "medicalRecords"
+
+export function getDefaultMedicalRecord(patientId: string): MedicalRecord {
+  return {
+    patientId,
+    labNotes: "",
     xrayImageUrl: null,
-    history:
-      "Appendectomy (2015). Seasonal allergies. No known drug allergies. Mother has history of hypertension.",
-    historyImageUrl: null,
-    oldPrescriptionUrl: null,
-    newPrescription: "Vitamin D3 2000 IU — once daily with food for 90 days.",
-    examinationNotes: "General appearance normal. No acute distress observed.",
-    examinations: [
-      { id: "e1", url: null, description: "Throat examination — mild inflammation" },
-    ],
-  },
-  "2": {
-    patientId: "2",
-    labNotes:
-      "Fasting glucose 132 mg/dL. HbA1c 6.8%. Lipid panel shows elevated LDL (161 mg/dL). Monitor for type 2 diabetes.",
-    xrayImageUrl: null,
-    history:
-      "Type 2 diabetes (diagnosed 2019). Coronary stent placement (2021). Currently on Metformin and Atorvastatin.",
-    historyImageUrl: null,
-    oldPrescriptionUrl: null,
-    newPrescription: "Metformin 1000mg — twice daily.\nAtorvastatin 20mg — once at night.",
-    examinationNotes: "",
-    examinations: [],
-  },
-  "3": {
-    patientId: "3",
-    labNotes: "Routine screening — all values normal. No follow-up required.",
-    xrayImageUrl: null,
-    history: "No significant past medical or surgical history. Non-smoker.",
+    history: "",
     historyImageUrl: null,
     oldPrescriptionUrl: null,
     newPrescription: "",
     examinationNotes: "",
     examinations: [],
-  },
-  "4": {
-    patientId: "4",
-    labNotes: "Chest X-ray ordered to rule out lower respiratory infection. Awaiting results.",
-    xrayImageUrl: null,
-    history: "Fractured left wrist (2018). Smoker — 1 pack/day for 20 years. Advised on cessation.",
-    historyImageUrl: null,
-    oldPrescriptionUrl: null,
-    newPrescription: "Amoxicillin 500mg — three times daily for 7 days.",
-    examinationNotes: "",
-    examinations: [],
-  },
-  "5": {
-    patientId: "5",
-    labNotes:
-      "Bone density scan indicates osteopenia. Kidney function stable. Blood pressure well controlled.",
-    xrayImageUrl: null,
-    history:
-      "Hypertension (long-standing). Cataract surgery, both eyes (2020, 2022). Hip replacement (2023).",
-    historyImageUrl: null,
-    oldPrescriptionUrl: null,
-    newPrescription: "Calcium + Vitamin D — once daily.\nAmlodipine 5mg — once daily.",
-    examinationNotes: "",
-    examinations: [],
-  },
+  }
 }
 
-export function getRecordForPatient(patientId: string): MedicalRecord {
-  return (
-    initialMedicalRecords[patientId] ?? {
-      patientId,
-      labNotes: "",
-      xrayImageUrl: null,
-      history: "",
-      historyImageUrl: null,
-      oldPrescriptionUrl: null,
-      newPrescription: "",
-      examinationNotes: "",
-      examinations: [],
+/**
+ * Subscribe to a patient's medical record document in Firestore in real-time.
+ */
+export function subscribeMedicalRecord(
+  patientId: string,
+  callback: (record: MedicalRecord) => void,
+  onError?: (error: Error) => void
+) {
+  const docRef = doc(db, COLLECTION_NAME, patientId)
+
+  return onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data()
+        callback({
+          patientId,
+          labNotes: data.labNotes ?? "",
+          xrayImageUrl: data.xrayImageUrl ?? null,
+          history: data.history ?? "",
+          historyImageUrl: data.historyImageUrl ?? null,
+          oldPrescriptionUrl: data.oldPrescriptionUrl ?? null,
+          newPrescription: data.newPrescription ?? "",
+          examinationNotes: data.examinationNotes ?? "",
+          examinations: Array.isArray(data.examinations) ? data.examinations : [],
+        })
+      } else {
+        callback(getDefaultMedicalRecord(patientId))
+      }
+    },
+    (err) => {
+      console.error("Error subscribing to medical record:", err)
+      if (onError) onError(err)
+      callback(getDefaultMedicalRecord(patientId))
     }
   )
+}
+
+/**
+ * Save medical record text notes & data directly to Firestore.
+ */
+export async function saveMedicalRecordToFirestore(record: MedicalRecord): Promise<void> {
+  const docRef = doc(db, COLLECTION_NAME, record.patientId)
+  await setDoc(
+    docRef,
+    {
+      patientId: record.patientId,
+      labNotes: record.labNotes || "",
+      xrayImageUrl: record.xrayImageUrl || null,
+      history: record.history || "",
+      historyImageUrl: record.historyImageUrl || null,
+      oldPrescriptionUrl: record.oldPrescriptionUrl || null,
+      newPrescription: record.newPrescription || "",
+      examinationNotes: record.examinationNotes || "",
+      examinations: record.examinations || [],
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  )
+}
+
+/**
+ * Upload an image to Firebase Storage and return its public download URL.
+ * Throws an error if Firebase Storage bucket is not enabled or fails.
+ */
+export async function uploadMedicalImageToStorage(
+  patientId: string,
+  file: File,
+  folder: string
+): Promise<string> {
+  const fileExt = file.name.split(".").pop() || "png"
+  const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`
+  const storageRef = ref(storage, `medical-records/${patientId}/${folder}/${fileName}`)
+
+  const snapshot = await uploadBytes(storageRef, file)
+  const downloadUrl = await getDownloadURL(snapshot.ref)
+  return downloadUrl
 }

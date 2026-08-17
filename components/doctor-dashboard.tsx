@@ -16,7 +16,14 @@ import {
   deletePatientFromFirestore,
   formatDate,
 } from "@/lib/patients"
-import { getRecordForPatient, type MedicalRecord, type ImageField } from "@/lib/medical-records"
+import {
+  getDefaultMedicalRecord,
+  subscribeMedicalRecord,
+  saveMedicalRecordToFirestore,
+  uploadMedicalImageToStorage,
+  type MedicalRecord,
+  type ImageField,
+} from "@/lib/medical-records"
 import { useAuth } from "@/lib/auth-context"
 import { LoginForm } from "@/components/login-form"
 
@@ -33,6 +40,12 @@ export function DoctorDashboard() {
   const [calendarDialogOpen, setCalendarDialogOpen] = useState(false)
   const [updatingFreeExam, setUpdatingFreeExam] = useState(false)
 
+  // Medical Record Save & Upload States
+  const [isSavingRecord, setIsSavingRecord] = useState(false)
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadingField, setUploadingField] = useState<string | null>(null)
+
   // Subscribe to real-time Firestore patient updates
   useEffect(() => {
     if (!user || role !== "doctor") return
@@ -46,6 +59,19 @@ export function DoctorDashboard() {
     return () => unsubscribe()
   }, [user, role])
 
+  // Subscribe to real-time Firestore medical record updates for the selected patient
+  useEffect(() => {
+    if (!selectedId) return
+
+    setUploadError(null)
+    setSaveSuccessMsg(false)
+    const unsubscribe = subscribeMedicalRecord(selectedId, (updatedRecord) => {
+      setRecords((prev) => ({ ...prev, [selectedId]: updatedRecord }))
+    })
+
+    return () => unsubscribe()
+  }, [selectedId])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return patients
@@ -54,7 +80,7 @@ export function DoctorDashboard() {
 
   const selectedPatient = patients.find((p) => p.id === selectedId) ?? null
   const activeRecord: MedicalRecord | null = selectedPatient
-    ? (records[selectedPatient.id] ?? getRecordForPatient(selectedPatient.id))
+    ? (records[selectedPatient.id] ?? getDefaultMedicalRecord(selectedPatient.id))
     : null
 
   // 2. Early returns AFTER all hooks have been executed
@@ -103,9 +129,21 @@ export function DoctorDashboard() {
     setRecords((prev) => ({ ...prev, [record.patientId]: record }))
   }
 
-  function handleSaveRecord(record: MedicalRecord) {
-    console.log("Save medical record:", record)
-    handleRecordChange(record)
+  async function handleSaveRecord(record: MedicalRecord) {
+    setIsSavingRecord(true)
+    setSaveSuccessMsg(false)
+    setUploadError(null)
+    try {
+      await saveMedicalRecordToFirestore(record)
+      handleRecordChange(record)
+      setSaveSuccessMsg(true)
+      setTimeout(() => setSaveSuccessMsg(false), 4000)
+    } catch (err) {
+      console.error("Failed to save medical record to Firestore:", err)
+      setUploadError("Failed to save medical record to Firestore. Please check your connection or Firestore Security Rules.")
+    } finally {
+      setIsSavingRecord(false)
+    }
   }
 
   async function handleEditPatient(values: Omit<Patient, "id">, id?: string) {
@@ -134,22 +172,62 @@ export function DoctorDashboard() {
     await deletePatientFromFirestore(idToDelete)
   }
 
-  function handleUploadImage(field: ImageField, file: File) {
-    if (!activeRecord) return
+  async function handleUploadImage(field: ImageField, file: File) {
+    if (!activeRecord || !selectedId) return
+    setUploadingField(field)
+    setUploadError(null)
+
+    // Local preview immediately
     const localUrl = URL.createObjectURL(file)
-    handleRecordChange({ ...activeRecord, [field]: localUrl })
+    const previewRecord = { ...activeRecord, [field]: localUrl }
+    handleRecordChange(previewRecord)
+
+    try {
+      const storageUrl = await uploadMedicalImageToStorage(selectedId, file, field)
+      const updatedRecord = { ...activeRecord, [field]: storageUrl }
+      handleRecordChange(updatedRecord)
+      await saveMedicalRecordToFirestore(updatedRecord)
+    } catch (err) {
+      console.error("Firebase Storage Upload Error:", err)
+      setUploadError(
+        "Image upload failed — Firebase Storage may not be enabled or configured in Firebase Console. (Text notes can still be saved successfully)."
+      )
+    } finally {
+      setUploadingField(null)
+    }
   }
 
-  function handleUploadExamPhoto(file: File) {
-    if (!activeRecord) return
+  async function handleUploadExamPhoto(file: File) {
+    if (!activeRecord || !selectedId) return
+    setUploadingField("examinations")
+    setUploadError(null)
+
+    const tempId = `e-${Date.now()}`
     const localUrl = URL.createObjectURL(file)
-    handleRecordChange({
+    const previewExam = { id: tempId, url: localUrl, description: "" }
+    const previewRecord = {
       ...activeRecord,
-      examinations: [
-        ...activeRecord.examinations,
-        { id: `e-${Date.now()}`, url: localUrl, description: "" },
-      ],
-    })
+      examinations: [...activeRecord.examinations, previewExam],
+    }
+    handleRecordChange(previewRecord)
+
+    try {
+      const storageUrl = await uploadMedicalImageToStorage(selectedId, file, "examinations")
+      const updatedExam = { id: tempId, url: storageUrl, description: "" }
+      const updatedRecord = {
+        ...activeRecord,
+        examinations: [...activeRecord.examinations.filter((e) => e.id !== tempId), updatedExam],
+      }
+      handleRecordChange(updatedRecord)
+      await saveMedicalRecordToFirestore(updatedRecord)
+    } catch (err) {
+      console.error("Firebase Storage Upload Error:", err)
+      setUploadError(
+        "Examination photo upload failed — Firebase Storage may not be enabled or configured in Firebase Console. (Text notes can still be saved successfully)."
+      )
+    } finally {
+      setUploadingField(null)
+    }
   }
 
   function handlePrintPrescription(record: MedicalRecord) {
@@ -185,7 +263,7 @@ export function DoctorDashboard() {
           </div>
         </div>
 
-        {/* Top-Right: Doctor Controls (Logs, Calendar, Logout — Nurse View removed) */}
+        {/* Top-Right: Doctor Controls (Logs, Calendar, Logout) */}
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -352,6 +430,10 @@ export function DoctorDashboard() {
                 onUploadImage={handleUploadImage}
                 onUploadExamPhoto={handleUploadExamPhoto}
                 onPrintPrescription={handlePrintPrescription}
+                isSaving={isSavingRecord}
+                saveSuccessMsg={saveSuccessMsg}
+                uploadError={uploadError}
+                uploadingField={uploadingField}
               />
             </div>
           ) : (
