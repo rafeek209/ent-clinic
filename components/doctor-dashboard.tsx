@@ -388,27 +388,30 @@ export function DoctorDashboard() {
               </button>
 
               <div className="mb-6 rounded-xl border border-border bg-card p-4 space-y-4 sm:p-5">
-                <div className="flex flex-wrap items-center gap-4">
-                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-                    <UserRound className="h-7 w-7" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-xl font-semibold text-foreground">{selectedPatient.fullName}</h2>
-                    <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-0.5">
-                      <span>Age {selectedPatient.age}</span>
-                      <span>·</span>
-                      <span>{selectedPatient.job}</span>
-                      <span>·</span>
-                      <span className="inline-flex items-center gap-1 font-medium text-primary">
-                        <CalendarIcon className="h-3.5 w-3.5" />
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-4">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                      <UserRound className="h-7 w-7" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 dir="auto" className="text-xl font-semibold text-foreground break-words">
+                        {selectedPatient.fullName}
+                      </h2>
+                      <p dir="auto" className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                        <span>Age {selectedPatient.age}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="min-w-0 truncate">{selectedPatient.job}</span>
+                      </p>
+                      <p className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-primary">
+                        <CalendarIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                         Last Visit: {formatDate(selectedPatient.lastVisit)}
-                      </span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Phone(s): <span className="font-mono text-foreground">{selectedPatient.phones.join(", ")}</span>
-                    </p>
+                      </p>
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        Phone(s): <span className="font-mono text-foreground">{selectedPatient.phones.join(", ")}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
                     <Button variant="outline" onClick={() => setEditDialogOpen(true)} className="bg-transparent">
                       <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
                       Edit Details
