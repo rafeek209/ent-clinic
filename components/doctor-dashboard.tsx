@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
-import { Search, LogOut, UserRound, Pencil, Loader2, ShieldAlert, Calendar as CalendarIcon, CheckCircle2, FileText } from "lucide-react"
+import { Search, LogOut, UserRound, Pencil, Loader2, ShieldAlert, Calendar as CalendarIcon, CheckCircle2, FileText, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { MedicalTabs } from "@/components/doctor/medical-tabs"
 import { PatientFormDialog } from "@/components/patient-form-dialog"
@@ -241,30 +241,33 @@ export function DoctorDashboard() {
   return (
     <div className="flex h-dvh flex-col bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-3">
+      <header className="flex flex-col gap-3 border-b border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         {/* Top-Left: Logo, title, and ThemeToggle */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex min-w-0 items-center gap-3">
             <Image
               src="/logo.png"
               alt="ENT Clinic Logo"
               width={90}
               height={36}
               priority
-              className="h-9 w-auto object-contain mix-blend-multiply dark:bg-white/90 dark:p-1 dark:rounded-lg dark:mix-blend-normal"
+              className="h-8 w-auto shrink-0 object-contain mix-blend-multiply dark:bg-white/90 dark:p-1 dark:rounded-lg dark:mix-blend-normal sm:h-9"
             />
-            <div>
-              <h1 className="text-base font-semibold leading-tight text-foreground">ENT Clinic</h1>
-              <p className="text-xs text-muted-foreground">Doctor View • {user.email}</p>
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold leading-tight text-foreground sm:text-base">ENT Clinic</h1>
+              <p className="truncate text-xs text-muted-foreground">Doctor View • {user.email}</p>
             </div>
           </div>
-          <div className="border-l border-border pl-3">
+          <div className="hidden border-l border-border pl-3 sm:block">
             <ThemeToggle />
           </div>
         </div>
 
         {/* Top-Right: Doctor Controls (Logs, Calendar, Logout) */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="sm:hidden">
+            <ThemeToggle />
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -293,9 +296,13 @@ export function DoctorDashboard() {
       </header>
 
       {/* Split screen */}
-      <div className="flex min-h-0 flex-1">
-        {/* Left sidebar */}
-        <aside className="flex w-72 flex-col border-r border-border bg-card">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Left sidebar — full width on mobile when no patient selected, fixed width on desktop */}
+        <aside
+          className={`${
+            selectedId ? "hidden md:flex" : "flex"
+          } w-full flex-col border-r border-border bg-card md:w-72 md:flex`}
+        >
           <div className="border-b border-border p-4">
             <div className="relative">
               <Search
@@ -363,12 +370,25 @@ export function DoctorDashboard() {
           </nav>
         </aside>
 
-        {/* Right main area */}
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        {/* Right main area — full width on mobile when a patient IS selected, always visible on desktop */}
+        <main
+          className={`${
+            selectedPatient ? "flex" : "hidden md:flex"
+          } min-w-0 flex-1 flex-col overflow-y-auto`}
+        >
           {selectedPatient && activeRecord ? (
-            <div className="mx-auto max-w-4xl p-6">
-              <div className="mb-6 rounded-xl border border-border bg-card p-5 space-y-4">
-                <div className="flex items-center gap-4">
+            <div className="mx-auto w-full max-w-4xl p-4 sm:p-6">
+              {/* Mobile-only back button */}
+              <button
+                onClick={() => setSelectedId(null)}
+                className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground md:hidden"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Back to patient list
+              </button>
+
+              <div className="mb-6 rounded-xl border border-border bg-card p-4 space-y-4 sm:p-5">
+                <div className="flex flex-wrap items-center gap-4">
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
                     <UserRound className="h-7 w-7" aria-hidden="true" />
                   </span>
@@ -400,7 +420,7 @@ export function DoctorDashboard() {
                 </div>
 
                 {/* Doctor Free Re-Exam Control Toggle */}
-                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5">
                   <label className="flex items-center gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"

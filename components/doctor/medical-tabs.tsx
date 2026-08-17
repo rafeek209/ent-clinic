@@ -292,7 +292,7 @@ export function MedicalTabs({
                 className="w-full resize-y rounded-lg border border-input bg-background p-3 text-sm leading-relaxed outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
               />
             </div>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">Examination photo gallery</p>
               <ExamUploadButton onUpload={onUploadExamPhoto} uploading={uploadingField === "examinations"} />
             </div>
@@ -336,7 +336,7 @@ export function MedicalTabs({
         {/* Surgery Tab */}
         {active === "surgery" && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between rounded-xl border border-border bg-card p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-5">
               <div>
                 <h3 className="text-base font-semibold text-foreground">Scheduled Surgeries for {patientName}</h3>
                 <p className="text-xs text-muted-foreground">
