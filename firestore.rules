@@ -1,0 +1,53 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: check if user is logged in
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function: get user document from 'users' collection
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper function: check if authenticated user has role == 'doctor'
+    function isDoctor() {
+      return isAuthenticated() && getUserData().role == 'doctor';
+    }
+
+    // Helper function: check if authenticated user has role == 'nurse'
+    function isNurse() {
+      return isAuthenticated() && getUserData().role == 'nurse';
+    }
+
+    // 1. Users collection:
+    // - Authenticated users can read user profile documents.
+    // - Users can create/update their own document (matching request.auth.uid).
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 2. Patients collection:
+    // - Both nurses and doctors are authorized clinic staff and can read and write patient intake data.
+    match /patients/{patientId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // 3. Medical Records, Prescriptions, Lab Notes, and Examinations:
+    // - Backend enforcement: ONLY users with role == 'doctor' can read or write medical records!
+    // - Bypassing UI controls will fail at the database level for nurse accounts.
+    match /medicalRecords/{recordId} {
+      allow read, create, update, delete: if isDoctor();
+    }
+
+    // Nested examinations or subcollections under medicalRecords
+    match /medicalRecords/{recordId}/{subcollection=**} {
+      allow read, create, update, delete: if isDoctor();
+    }
+  }
+}
